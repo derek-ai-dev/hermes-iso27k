@@ -48,7 +48,7 @@ def build_bundle(log: Path, out_dir: Path, retention_days: int = 365) -> Path:
     if config_path.exists():
         shutil.copy2(config_path, bundle / "config-snapshot.yaml")
 
-    # 3. Build manifest with hashes of all files except manifest itself
+    # 3. Build manifest with hashes
     manifest = {
         "bundle_id": bundle.name,
         "created_utc": datetime.now(timezone.utc).isoformat(),
