@@ -11,7 +11,7 @@ from typing import Optional
 
 class PolicyEngine:
     def __init__(self, mode: str = "permissive", policy_file: str = None):
-        self.mode = mode or "permissive"
+        self.mode = mode if mode else "permissive"
         self.policy_file = Path(policy_file).expanduser() if policy_file else None
         self.rules = self._load_rules()
 

@@ -45,7 +45,7 @@ def post_tool_call(tool_name: str, args: dict, result, **kwargs):
     result_text = str(result)[:500] if result is not None else ""
     path = ""
     if isinstance(args, dict):
-        path = str(args.get("path") or args.get("path") or "")
+        path = str(args.get("path") or "")
     decision = policy.evaluate(tool=tool_name, args=args_text, path=path)
     control_hints = []
     if decision:
