@@ -45,6 +45,8 @@ class PolicyEngine:
             data = yaml.safe_load(self.policy_file.read_text())
             if isinstance(data, list):
                 return data
+            if isinstance(data, dict) and isinstance(data.get("rules"), list):
+                return data["rules"]
         return defaults
 
     def evaluate(self, tool: str, args: str = "", path: str = "") -> Optional[dict]:
