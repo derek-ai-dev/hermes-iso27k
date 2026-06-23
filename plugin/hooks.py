@@ -3,6 +3,7 @@ Hermes plugin hooks for hermes-iso27k.
 
 Requires: plugin.yaml, audit_store, policy, slash commands.
 """
+import logging
 import os
 import yaml
 from pathlib import Path
@@ -10,6 +11,7 @@ from typing import Optional
 from .audit_store import AuditStore
 from .policy import PolicyEngine
 
+logger = logging.getLogger(__name__)
 
 _store: AuditStore = None
 _policy: PolicyEngine = None
@@ -18,7 +20,11 @@ _policy: PolicyEngine = None
 def _get_store() -> AuditStore:
     global _store
     if _store is None:
-        _store = AuditStore()
+        try:
+            _store = AuditStore()
+        except Exception as exc:
+            logger.error("failed to initialise AuditStore: %s", exc)
+            raise
     return _store
 
 
@@ -27,7 +33,11 @@ def _get_policy() -> PolicyEngine:
     if _policy is None:
         config_path = os.environ.get("HERMES_ISO27K_POLICY", "")
         mode = os.environ.get("HERMES_ISO27K_MODE", "permissive")
-        _policy = PolicyEngine(mode=mode, policy_file=config_path or None)
+        try:
+            _policy = PolicyEngine(mode=mode, policy_file=config_path or None)
+        except Exception as exc:
+            logger.error("failed to initialise PolicyEngine: %s", exc)
+            raise
     return _policy
 
 
@@ -39,8 +49,11 @@ def _summarize_args(args: dict) -> str:
 
 
 def post_tool_call(tool_name: str, args: dict, result, **kwargs):
-    store = _get_store()
-    policy = _get_policy()
+    try:
+        store = _get_store()
+        policy = _get_policy()
+    except Exception:
+        return None
     args_text = _summarize_args(args or {})
     result_text = str(result)[:500] if result is not None else ""
     path = ""
@@ -92,6 +105,31 @@ def on_config_change(key: str, old_value, new_value, store: Optional[AuditStore]
         result_summary="",
         control_hints=["A.12.1"],
     )
+
+
+def status() -> dict:
+    try:
+        store = _get_store()
+        verification = store.verify()
+        policy = _get_policy()
+        return {
+            "plugin": "hermes-iso27k",
+            "version": "0.1.0",
+            "status": "ok",
+            "audit_log": str(store.path),
+            "audit_entries": verification.get("entries", 0),
+            "audit_ok": verification.get("ok", False),
+            "policy_mode": policy.mode,
+            "rules_loaded": len(policy.rules),
+        }
+    except Exception as exc:
+        logger.error("status check failed: %s", exc)
+        return {
+            "plugin": "hermes-iso27k",
+            "version": "0.1.0",
+            "status": "error",
+            "error": str(exc),
+        }
 
 
 def register(plugin_manager):

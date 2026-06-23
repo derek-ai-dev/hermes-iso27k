@@ -6,11 +6,13 @@ import json
 import hashlib
 import os
 import re
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
 
 _VAULT_PATTERNS = {
     "AWS key id": r"AKIA[0-9A-Z]{16}",
@@ -23,7 +25,10 @@ _VAULT_PATTERNS = {
 def _vault_redact(text: str) -> str:
     out = text or ""
     for label, pat in _VAULT_PATTERNS.items():
-        out = re.sub(pat, f"[REDACTED:{label}]", out)
+        try:
+            out = re.sub(pat, f"[REDACTED:{label}]", out)
+        except re.error as exc:
+            logger.error("redaction pattern failed for %s: %s", label, exc)
     return out
 
 
@@ -43,11 +48,16 @@ class AuditEntry:
 
 class AuditStore:
     def __init__(self, path: str = None):
-        self.path = Path(path or os.environ.get("HERMES_27K_LOG", "")).expanduser()
+        raw = path or os.environ.get("HERMES_27K_LOG")
+        self.path = Path(raw).expanduser() if raw else None
         if not self.path:
-            hermes_home = os.environ.get("HERMES_HOME", Path.home() / ".hermes")
+            hermes_home = os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
             self.path = Path(hermes_home) / "iso27k" / "audit.jsonl"
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.error("cannot create audit log directory %s: %s", self.path.parent, exc)
+            raise
         self._sequence = 0
         self._last_hash = self._genesis_hash()
         self._bootstrap()
@@ -74,36 +84,54 @@ class AuditStore:
     def _bootstrap(self):
         if not self.path.exists():
             return
-        lines = self.path.read_text().splitlines()
+        try:
+            lines = self.path.read_text().splitlines()
+        except OSError as exc:
+            logger.error("cannot read audit log %s: %s", self.path, exc)
+            return
         if not lines:
             return
+        for line in lines:
+            try:
+                json.loads(line)
+            except json.JSONDecodeError as exc:
+                logger.error("corrupt audit log line skipped: %s", exc)
+                return
         last = json.loads(lines[-1])
         self._sequence = last.get("sequence", 0)
         self._last_hash = last.get("hash", self._genesis_hash())
 
-    def append(self, event_type: str, tool: str = None, args_summary: str = "", result_summary: str = "", control_hints: list = None, metadata: dict = None) -> AuditEntry:
-        self._sequence += 1
-        entry = AuditEntry(
-            sequence=self._sequence,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            event_type=event_type,
-            tool=tool,
-            args_summary=_vault_redact(args_summary),
-            result_summary=_vault_redact(result_summary),
-            control_hints=control_hints or [],
-            metadata=metadata or {},
-            prev_hash=self._last_hash,
-        )
-        entry.hash = self._compute_hash(entry)
-        with open(self.path, "a") as f:
-            f.write(json.dumps(asdict(entry)) + "\n")
-        self._last_hash = entry.hash
-        return entry
+    def append(self, event_type: str, tool: Optional[str] = None, args_summary: str = "", result_summary: str = "", control_hints: Optional[list] = None, metadata: Optional[dict] = None) -> Optional[AuditEntry]:
+        try:
+            self._sequence += 1
+            entry = AuditEntry(
+                sequence=self._sequence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                event_type=event_type,
+                tool=tool,
+                args_summary=_vault_redact(args_summary),
+                result_summary=_vault_redact(result_summary),
+                control_hints=control_hints or [],
+                metadata=metadata or {},
+                prev_hash=self._last_hash,
+            )
+            entry.hash = self._compute_hash(entry)
+            with open(self.path, "a") as f:
+                f.write(json.dumps(asdict(entry)) + "\n")
+            self._last_hash = entry.hash
+            return entry
+        except OSError as exc:
+            logger.error("audit append failed for %s: %s", self.path, exc)
+            return None
 
     def verify(self) -> dict:
         if not self.path.exists():
             return {"ok": True, "entries": 0}
-        lines = self.path.read_text().splitlines()
+        try:
+            lines = self.path.read_text().splitlines()
+        except OSError as exc:
+            logger.error("cannot read audit log %s: %s", self.path, exc)
+            return {"ok": False, "error": str(exc)}
         if not lines:
             return {"ok": True, "entries": 0}
         prev_hash = self._genesis_hash()

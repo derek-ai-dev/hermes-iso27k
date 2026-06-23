@@ -3,10 +3,13 @@
 Rules are loaded from YAML. In permissive mode the engine only logs.
 In enforce mode it returns decisions for block/flag/allow actions.
 """
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyEngine:
@@ -16,7 +19,6 @@ class PolicyEngine:
         self.rules = self._load_rules()
 
     def _load_rules(self) -> list:
-        # Default built-in rules when no external file exists
         defaults = [
             {
                 "id": "deny-write-ssh-auth",
@@ -40,14 +42,38 @@ class PolicyEngine:
                 "reason": "Secrets file modification requires human approval",
             },
         ]
-        if self.policy_file and self.policy_file.exists():
+        if not self.policy_file or not self.policy_file.exists():
+            return defaults
+        try:
             import yaml
             data = yaml.safe_load(self.policy_file.read_text())
-            if isinstance(data, list):
-                return data
-            if isinstance(data, dict) and isinstance(data.get("rules"), list):
-                return data["rules"]
+        except Exception as exc:
+            logger.error("failed to load policy file %s: %s", self.policy_file, exc)
+            return defaults
+        if isinstance(data, list):
+            return self._validate_rules(data)
+        if isinstance(data, dict) and isinstance(data.get("rules"), list):
+            return self._validate_rules(data["rules"])
+        logger.error("policy file %s has unsupported structure", self.policy_file)
         return defaults
+
+    def _validate_rules(self, rules: list) -> list:
+        valid = []
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            if not rule.get("id") or not rule.get("match") or not rule.get("action"):
+                logger.error("skipping invalid policy rule: %s", rule)
+                continue
+            match = rule.get("match", {})
+            if match.get("args_regex"):
+                try:
+                    re.compile(match["args_regex"])
+                except re.error as exc:
+                    logger.error("invalid regex in rule %s: %s", rule.get("id"), exc)
+                    continue
+            valid.append(rule)
+        return valid or self._load_rules()
 
     def evaluate(self, tool: str, args: str = "", path: str = "") -> Optional[dict]:
         matched = None

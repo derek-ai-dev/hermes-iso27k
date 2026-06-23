@@ -5,12 +5,9 @@ author: "derek-ai-dev"
 license: MIT
 hooks:
   - post_tool_call
+  - on_session_start
   - on_session_end
   - on_config_change
-slash_commands:
-  - iso27k
-toolsets:
-  - iso27k
 
 config_schema:
   type: object
