@@ -96,5 +96,6 @@ def on_config_change(key: str, old_value, new_value, store: Optional[AuditStore]
 
 def register(plugin_manager):
     plugin_manager.register_hook("post_tool_call", post_tool_call)
+    plugin_manager.register_hook("on_session_start", on_session_start)
     plugin_manager.register_hook("on_session_end", on_session_end)
     plugin_manager.register_hook("on_config_change", on_config_change)
