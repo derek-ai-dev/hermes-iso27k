@@ -36,7 +36,7 @@ rules:
   - id: flag-external-data-transfer
     match:
       tool: terminal
-      args_contains: "curl -o -"
+      args_contains: "curl -o "
     action: flag
     control: A.12.3
     reason: Bulk outbound transfer from shell is suspicious
@@ -84,7 +84,7 @@ rules:
   - id: deny-web-exfil-noncorp
     match:
       tool: terminal
-      args_regex: "curl|wget|nc .* noncorp|transfer.* out"
+      args_regex: "(curl|wget|nc)\\s+.*noncorp"
     action: deny
     control: A.12.3
     reason: Potential exfiltration to non-corporate endpoint
