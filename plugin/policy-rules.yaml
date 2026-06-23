@@ -1,0 +1,122 @@
+name: hermes-iso27k-policy
+version: 0.1.0
+rules:
+  - id: deny-write-ssh-auth
+    match:
+      tool: terminal
+      args_contains: "~/.ssh/authorized_keys"
+    action: deny
+    control: A.9.4
+    reason: Writing to authorized_keys is a sensitive access-control change
+
+  - id: flag-chmod-777
+    match:
+      tool: terminal
+      args_contains: "chmod 777"
+    action: flag
+    control: A.12.3
+    reason: Overly permissive file permissions
+
+  - id: require-approval-env-write
+    match:
+      tool: write_file
+      path_contains: ".env"
+    action: require_approval
+    control: A.12.1
+    reason: Secrets file modification requires human approval
+
+  - id: deny-pii-write-personal-data
+    match:
+      tool: write_file
+      path_contains: "personal-data"
+    action: deny
+    control: A.8.3
+    reason: Writing to personal data files without approval
+
+  - id: flag-external-data-transfer
+    match:
+      tool: terminal
+      args_contains: "curl -o -"
+    action: flag
+    control: A.12.3
+    reason: Bulk outbound transfer from shell is suspicious
+
+  - id: require-approval-skill-write
+    match:
+      tool: write_file
+      path_contains: "/skills/"
+    action: require_approval
+    control: A.14.2.5
+    reason: Modifying skills should follow change-control process
+
+  - id: flag-container-isolation-change
+    match:
+      tool: write_file
+      path_contains: "docker-compose"
+    action: flag
+    control: A.14.2.5
+    reason: Container isolation/config change needs review
+
+  - id: deny-rm-rf-root
+    match:
+      tool: terminal
+      args_contains: "rm -rf /"
+    action: deny
+    control: A.12.1
+    reason: Destructive command against root filesystem is forbidden
+
+  - id: flag-cron-schedule-target
+    match:
+      tool: cron
+      args_contains: "schedule"
+    action: flag
+    control: A.12.3
+    reason: New or changed cron schedules should be visible to auditors
+
+  - id: require-approval-secret-read
+    match:
+      tool: read_file
+      path_contains: "secrets"
+    action: require_approval
+    control: A.8.5
+    reason: Reading secrets should require explicit approval
+
+  - id: deny-web-exfil-noncorp
+    match:
+      tool: terminal
+      args_regex: "curl|wget|nc .* noncorp|transfer.* out"
+    action: deny
+    control: A.12.3
+    reason: Potential exfiltration to non-corporate endpoint
+
+  - id: flag-config-changes
+    match:
+      tool: config
+      args_contains: "set"
+    action: flag
+    control: A.12.1
+    reason: Config changes should be reviewed
+
+  - id: require-approval-plugin-install
+    match:
+      tool: terminal
+      args_contains: "plugins install"
+    action: require_approval
+    control: A.14.2.5
+    reason: External plugin install is a supply-chain risk
+
+  - id: flag-skill-cron-mutation
+    match:
+      tool: cron
+      args_contains: "skill"
+    action: flag
+    control: A.12.4
+    reason: Skill-related cron changes affect production behavior
+
+  - id: deny-destructive-sql
+    match:
+      tool: terminal
+      args_contains: "DROP DATABASE"
+    action: deny
+    control: A.12.1
+    reason: Unauthorized production data destruction is unacceptable
