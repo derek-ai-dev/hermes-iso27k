@@ -1,10 +1,10 @@
-"""
-Declarative policy engine for ISO 270K enforcement rules.
+"""Policy engine for ISO 27001 enforcement rules.
 
 Rules are loaded from YAML. In permissive mode the engine only logs.
-In enforce mode it returns True/False for block decisions.
+In enforce mode it returns decisions for block/flag/allow actions.
 """
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -56,6 +56,8 @@ class PolicyEngine:
             if m.get("tool") and m["tool"] != tool:
                 continue
             if m.get("args_contains") and m["args_contains"] not in args:
+                continue
+            if m.get("args_regex") and not re.search(m["args_regex"], args):
                 continue
             if m.get("path_contains") and m["path_contains"] not in path:
                 continue

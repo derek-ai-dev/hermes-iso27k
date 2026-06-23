@@ -6,6 +6,7 @@ Requires: plugin.yaml, audit_store, policy, slash commands.
 import os
 import yaml
 from pathlib import Path
+from typing import Optional
 from .audit_store import AuditStore
 from .policy import PolicyEngine
 
@@ -57,14 +58,23 @@ def post_tool_call(tool_name: str, args: dict, result, **kwargs):
         control_hints=control_hints,
         metadata={"decision": decision},
     )
-    # In enforce mode, side-effect calls are not returned through hooks in all versions,
-    # so we log only. Actual blocking is best-effort via plugin rules or approvals.
     return None
 
 
-def on_session_end(session_id: str, **kwargs):
-    store = _get_store()
-    store.append(
+def on_session_start(session_id: str, store: Optional[AuditStore] = None, **kwargs):
+    s = store or _get_store()
+    s.append(
+        event_type="session_start",
+        tool=None,
+        args_summary=session_id or "",
+        result_summary="",
+        control_hints=["A.12.4"],
+    )
+
+
+def on_session_end(session_id: str, store: Optional[AuditStore] = None, **kwargs):
+    s = store or _get_store()
+    s.append(
         event_type="session_end",
         tool=None,
         args_summary=session_id or "",
@@ -73,9 +83,9 @@ def on_session_end(session_id: str, **kwargs):
     )
 
 
-def on_config_change(key: str, old_value, new_value, **kwargs):
-    store = _get_store()
-    store.append(
+def on_config_change(key: str, old_value, new_value, store: Optional[AuditStore] = None, **kwargs):
+    s = store or _get_store()
+    s.append(
         event_type="config_change",
         tool="config",
         args_summary=f"{key}: {old_value} -> {new_value}",

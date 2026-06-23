@@ -47,7 +47,7 @@ def build_markdown_report(entries, control_prefix: str) -> str:
     tool_counts = {}
     control_counts = {}
     for e in entries:
-        t = e.get("tool", "system")
+        t = e.get("tool") or "system"
         tool_counts[t] = tool_counts.get(t, 0) + 1
         for c in e.get("control_hints", []):
             control_counts[c] = control_counts.get(c, 0) + 1

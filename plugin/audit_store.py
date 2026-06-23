@@ -1,15 +1,30 @@
-"""
-Hash-chained audit log store.
+"""Hash-chained audit log store.
 
-Writes append-only JSONL with SHA-256 chain linkage.
+Writes append-only JSONL with SHA-256 chain linkage and optional PII/secret redaction.
 """
 import json
 import hashlib
 import os
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
+
+
+_VAULT_PATTERNS = {
+    "AWS key id": r"AKIA[0-9A-Z]{16}",
+    "API key": r"(?i)api[_-]?key\s*[:=]\s*[A-Za-z0-9_\-]{16,}",
+    "token": r"(?i)token\s*[:=]\s*[A-Za-z0-9_\-\.]{16,}",
+    "secret": r"(?i)secret\s*[:=]\s*[A-Za-z0-9_\-\.]{16,}",
+}
+
+
+def _vault_redact(text: str) -> str:
+    out = text or ""
+    for label, pat in _VAULT_PATTERNS.items():
+        out = re.sub(pat, f"[REDACTED:{label}]", out)
+    return out
 
 
 @dataclass
@@ -28,7 +43,7 @@ class AuditEntry:
 
 class AuditStore:
     def __init__(self, path: str = None):
-        self.path = Path(path or os.environ.get("HERMES_ISO27K_LOG", "")).expanduser()
+        self.path = Path(path or os.environ.get("HERMES_27K_LOG", "")).expanduser()
         if not self.path:
             hermes_home = os.environ.get("HERMES_HOME", Path.home() / ".hermes")
             self.path = Path(hermes_home) / "iso27k" / "audit.jsonl"
@@ -73,8 +88,8 @@ class AuditStore:
             timestamp=datetime.now(timezone.utc).isoformat(),
             event_type=event_type,
             tool=tool,
-            args_summary=args_summary,
-            result_summary=result_summary,
+            args_summary=_vault_redact(args_summary),
+            result_summary=_vault_redact(result_summary),
             control_hints=control_hints or [],
             metadata=metadata or {},
             prev_hash=self._last_hash,
@@ -89,30 +104,30 @@ class AuditStore:
         if not self.path.exists():
             return {"ok": True, "entries": 0}
         lines = self.path.read_text().splitlines()
+        if not lines:
+            return {"ok": True, "entries": 0}
         prev_hash = self._genesis_hash()
         expected_seq = 1
         for i, line in enumerate(lines, 1):
-            entry = json.loads(line)
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                return {"ok": False, "error": f"invalid json at line {i}", "line": i}
             if entry.get("sequence") != expected_seq:
                 return {"ok": False, "error": f"sequence gap at line {i}", "line": i}
             if entry.get("prev_hash") != prev_hash:
                 return {"ok": False, "error": f"hash break at line {i}", "line": i}
-            # recompute hash
-            payload = json.dumps(
-                {
-                    "sequence": entry["sequence"],
-                    "timestamp": entry["timestamp"],
-                    "event_type": entry["event_type"],
-                    "tool": entry.get("tool"),
-                    "args_summary": entry.get("args_summary", ""),
-                    "result_summary": entry.get("result_summary", ""),
-                    "control_hints": entry.get("control_hints", []),
-                    "prev_hash": entry["prev_hash"],
-                },
-                sort_keys=True,
-            )
-            computed = hashlib.sha256(payload.encode()).hexdigest()
-            if computed != entry.get("hash"):
+            recomputed = self._compute_hash(AuditEntry(
+                sequence=entry["sequence"],
+                timestamp=entry["timestamp"],
+                event_type=entry["event_type"],
+                tool=entry.get("tool"),
+                args_summary=entry.get("args_summary", ""),
+                result_summary=entry.get("result_summary", ""),
+                control_hints=entry.get("control_hints", []),
+                prev_hash=entry["prev_hash"],
+            ))
+            if recomputed != entry.get("hash"):
                 return {"ok": False, "error": f"tampered hash at line {i}", "line": i}
             prev_hash = entry["hash"]
             expected_seq += 1
