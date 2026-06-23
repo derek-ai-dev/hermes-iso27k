@@ -1,14 +1,15 @@
 # Architecture
 
 ## Plugin layer (`plugin/`)
-- Hooks: `post_tool_call`, `on_session_end`, `on_config_change`
+- Hooks: `post_tool_call`, `on_session_start`, `on_session_end`, `on_config_change`
 - `AuditStore`: append-only JSONL with SHA-256 chain + `verify()`
 - `PolicyEngine`: YAML/rules-based allow/flag/deny
-- Slash commands: `/iso27k status`, `/iso27k verify`, `/iso27k report`
+- `status()`: health/readiness API (audit path, entry count, policy mode, rules loaded)
 
 ## Skill layer (`skill/`)
 - `SKILL.md`: Hermes skill definition
 - `scripts/report_generator.py`: builds Markdown evidence bundles
+- `scripts/bundle_evidence.py`: end-to-end dated evidence packager with retention pruning
 - `references/iso27001-controls.md`: control-to-event mapping
 
 ## Data flow

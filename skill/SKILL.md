@@ -16,9 +16,9 @@ Generates auditor-ready evidence from the `hermes-iso27k` plugin audit log.
 
 ## Workflow
 
-1. Run `/iso27k status` to confirm the plugin is active and the chain is healthy.
-2. Run `/iso27k verify` to check hash-chain integrity.
-3. Use `scripts/report_generator.py` to build an evidence bundle for specific controls.
+1. Check plugin health: `python -c "from hermes_iso27k import status; print(status())"`
+2. Verify audit log integrity: `python -c "from plugin.audit_store import AuditStore; print(AuditStore().verify())"`
+3. Use `skill/scripts/report_generator.py` to build an evidence bundle for specific controls.
 4. Store produced reports under `${HERMES_HOME}/iso27k/evidence/`.
 
 ## Evidence Bundle Layout
@@ -39,11 +39,12 @@ See `references/iso27001-controls.md`.
 ## Commands
 
 | Command | Action |
-|---------|--------|
-| `/iso27k status` | Plugin status + tail of audit log |
-| `/iso27k verify` | Recompute full hash chain |
-| `/iso27k report --control A.12` | Generate control-specific evidence |
-| `/iso27k report --all` | Generate full evidence bundle |
+|---|---|
+| `python -c "from hermes_iso27k import status; ..."` | Plugin status + audit summary |
+| `python -c "from plugin.audit_store import AuditStore; print(AuditStore().verify())"` | Recompute full hash chain |
+| `python skill/scripts/report_generator.py --control A.12` | Generate control-specific evidence |
+| `python skill/scripts/report_generator.py --all` | Generate full evidence bundle |
+| `python scripts/bundle_evidence.py` | Create dated evidence package |
 
 ## Pitfalls
 

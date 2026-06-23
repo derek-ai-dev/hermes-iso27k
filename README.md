@@ -55,14 +55,17 @@ Create a YAML file matching the structure in `plugin/policy-rules.yaml`. Each ru
 ## Usage
 
 ```bash
+# Check plugin status
+python -c "from hermes_iso27k import status; print(status())"
+
 # Verify audit log integrity
 python scripts/bundle_evidence.py --verify
 
 # Generate an evidence bundle
 python scripts/bundle_evidence.py
 
-# Check plugin status
-python -c "from hermes_iso27k import status; print(status())"
+# Generate a control-specific report
+python skill/scripts/report_generator.py --control A.12
 ```
 
 ## Evidence bundling cron
