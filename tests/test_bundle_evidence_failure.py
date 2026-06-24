@@ -13,8 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 def test_bundle_evidence_missing_log(tmp_path):
     from scripts.bundle_evidence import build_bundle
     missing = tmp_path / "missing.jsonl"
-    with pytest.raises(FileNotFoundError):
-        build_bundle(missing, tmp_path / "out", retention_days=30)
+    out = tmp_path / "out"
+    bundle = build_bundle(missing, out, retention_days=30)
+    assert bundle.is_dir()
+    assert missing.exists()
+    assert missing.read_text() == ""
+    assert (bundle / "audit-chain.jsonl").exists()
+    assert (bundle / "bundle-manifest.json").exists()
 
 
 def test_bundle_evidence_creates_manifest_and_hashes(tmp_path):

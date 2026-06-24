@@ -26,15 +26,13 @@ hermes plugins enable hermes-iso27k
 
 ## Configuration
 
-Set via `config.yaml` or environment variables:
+Set via environment variables:
 
 | Option | Env var | Default | Description |
 |---|---|---|---|
 | `enforcement` | `HERMES_ISO27K_MODE` | `permissive` | `permissive` = log only; `enforce` = apply rules |
-| `retention_days` | — | `365` | Evidence bundle retention period |
-| `evidence_dir` | — | `~/.hermes/iso27k/evidence` | Bundle output directory |
-| `audit_log` | — | `~/.hermes/iso27k/audit.jsonl` | Audit log path |
-| `policy_file` | — | `~/.hermes/iso27k/policy.yaml` | YAML policy rules file |
+| `audit_log` | `HERMES_27K_LOG` | `~/.hermes/iso27k/audit.jsonl` | Audit log path |
+| `policy_file` | `HERMES_ISO27K_POLICY` | — | YAML policy rules file |
 
 ### Policy file reference
 

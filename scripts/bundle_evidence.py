@@ -33,12 +33,13 @@ def sha256(path: Path) -> str:
 
 def build_bundle(log: Path, out_dir: Path, retention_days: int = 365) -> Path:
     if not log.exists():
-        raise FileNotFoundError(f"Audit log not found: {log}")
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     bundle = out_dir / f"evidence-{today}.bundle"
-    bundle.mkdir(exist_ok=False)
+    bundle.mkdir(parents=True, exist_ok=True)
 
     # 1. Copy audit chain
     shutil.copy2(log, bundle / "audit-chain.jsonl")

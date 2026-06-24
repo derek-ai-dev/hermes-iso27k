@@ -2,11 +2,13 @@
 
 Writes append-only JSONL with SHA-256 chain linkage and optional PII/secret redaction.
 """
+import fcntl
 import json
 import hashlib
 import os
 import re
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from dataclasses import dataclass, field, asdict
@@ -58,6 +60,7 @@ class AuditStore:
         except OSError as exc:
             logger.error("cannot create audit log directory %s: %s", self.path.parent, exc)
             raise
+        self._lock = threading.Lock()
         self._sequence = 0
         self._last_hash = self._genesis_hash()
         self._bootstrap()
@@ -75,6 +78,7 @@ class AuditStore:
                 "args_summary": entry.args_summary,
                 "result_summary": entry.result_summary,
                 "control_hints": entry.control_hints,
+                "metadata": entry.metadata,
                 "prev_hash": entry.prev_hash,
             },
             sort_keys=True,
@@ -85,7 +89,10 @@ class AuditStore:
         if not self.path.exists():
             return
         try:
-            lines = self.path.read_text().splitlines()
+            with self.path.open("r") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+                lines = f.read().splitlines()
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         except OSError as exc:
             logger.error("cannot read audit log %s: %s", self.path, exc)
             return
@@ -102,24 +109,32 @@ class AuditStore:
         self._last_hash = last.get("hash", self._genesis_hash())
 
     def append(self, event_type: str, tool: Optional[str] = None, args_summary: str = "", result_summary: str = "", control_hints: Optional[list] = None, metadata: Optional[dict] = None) -> Optional[AuditEntry]:
+        if not self.path:
+            logger.error("audit append failed: no log path configured")
+            return None
         try:
-            self._sequence += 1
-            entry = AuditEntry(
-                sequence=self._sequence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                event_type=event_type,
-                tool=tool,
-                args_summary=_vault_redact(args_summary),
-                result_summary=_vault_redact(result_summary),
-                control_hints=control_hints or [],
-                metadata=metadata or {},
-                prev_hash=self._last_hash,
-            )
-            entry.hash = self._compute_hash(entry)
-            with open(self.path, "a") as f:
-                f.write(json.dumps(asdict(entry)) + "\n")
-            self._last_hash = entry.hash
-            return entry
+            with self._lock:
+                self._sequence += 1
+                entry = AuditEntry(
+                    sequence=self._sequence,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    event_type=event_type,
+                    tool=tool,
+                    args_summary=_vault_redact(args_summary),
+                    result_summary=_vault_redact(result_summary),
+                    control_hints=control_hints or [],
+                    metadata=metadata or {},
+                    prev_hash=self._last_hash,
+                )
+                entry.hash = self._compute_hash(entry)
+                with self.path.open("a") as f:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    f.write(json.dumps(asdict(entry)) + "\n")
+                    f.flush()
+                    os.fsync(f.fileno())
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                self._last_hash = entry.hash
+                return entry
         except OSError as exc:
             logger.error("audit append failed for %s: %s", self.path, exc)
             return None
@@ -153,6 +168,7 @@ class AuditStore:
                 args_summary=entry.get("args_summary", ""),
                 result_summary=entry.get("result_summary", ""),
                 control_hints=entry.get("control_hints", []),
+                metadata=entry.get("metadata", {}),
                 prev_hash=entry["prev_hash"],
             ))
             if recomputed != entry.get("hash"):
